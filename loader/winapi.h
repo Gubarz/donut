@@ -78,8 +78,6 @@
 
     typedef LPWSTR* (WINAPI *CommandLineToArgvW_t)(LPCWSTR lpCmdLine, int* pNumArgs);
 
-    typedef BOOL (WINAPI *CloseHandle_t)(HANDLE hObject);
-
     typedef HANDLE (WINAPI *GetCurrentProcess_t)();
   
     // imports from shlwapi.dll
@@ -212,8 +210,6 @@
       BOOL                  bInitialState,
       LPCSTR                lpName);
 
-    typedef BOOL  (WINAPI *CloseHandle_t)(HANDLE hObject);
-
     typedef BOOL  (WINAPI *SetEvent_t)(HANDLE hEvent);
 
     typedef DWORD (WINAPI *GetCurrentThreadId_t)(VOID);
@@ -237,10 +233,6 @@
         LPCSTR                lpCurrentDirectory,
         LPSTARTUPINFOA        lpStartupInfo,
         LPPROCESS_INFORMATION lpProcessInformation);
-
-    typedef DWORD (WINAPI *WaitForSingleObject_t)(
-        HANDLE                hHandle,
-        DWORD                 dwMilliseconds);
 
     // imports from wininet.dll
     typedef BOOL (WINAPI *InternetCrackUrl_t)(
@@ -320,17 +312,6 @@
 
     typedef void (WINAPI *GetSystemInfo_t)(
       LPSYSTEM_INFO         lpSystemInfo);
-
-    typedef SIZE_T (WINAPI *VirtualQuery_t)(
-      LPCVOID                   lpAddress,
-      PMEMORY_BASIC_INFORMATION lpBuffer,
-      SIZE_T                    dwLength);
-      
-    typedef BOOL (WINAPI *VirtualProtect_t)(
-      LPVOID                    lpAddress,
-      SIZE_T                    dwSize,
-      DWORD                     flNewProtect,
-      PDWORD                    lpflOldProtect);
 
     typedef HMODULE (WINAPI *GetModuleHandleA_t)(
       LPCSTR                    lpModuleName);
@@ -523,35 +504,10 @@
       PCONTEXT               ContextRecord,
       BOOLEAN                TestAlert);
 
-    typedef NTSTATUS(NTAPI *NtUnmapViewOfSection_t)(
-      HANDLE ProcessHandle,
-      PVOID BaseAddress);
-
     typedef enum _SECTION_INHERIT {
       ViewShare = 1,
       ViewUnmap = 2
     } SECTION_INHERIT, * PSECTION_INHERIT;
-
-    typedef NTSTATUS(NTAPI *NtMapViewOfSection_t)(
-      HANDLE SectionHandle,
-      HANDLE ProcessHandle,
-      PVOID *BaseAddress,
-      ULONG_PTR ZeroBits,
-      SIZE_T CommitSize,
-      PLARGE_INTEGER SectionOffset,
-      PSIZE_T ViewSize,
-      SECTION_INHERIT InheritDisposition,
-      ULONG AllocationType,
-      ULONG Win32Protect);
-
-    typedef NTSTATUS(NTAPI *NtCreateSection_t)(
-      PHANDLE SectionHandle,
-      ACCESS_MASK DesiredAccess,
-      PVOID ObjectAttributes,
-      PLARGE_INTEGER MaximumSize,
-      ULONG SectionPageProtection,
-      ULONG AllocationAttributes,
-      HANDLE FileHandle);
 
     typedef BOOL (WINAPI *SetThreadContext_t)(
       HANDLE                 hThread,
@@ -563,14 +519,14 @@
 
     typedef HANDLE (WINAPI *GetCurrentThread_t)(VOID);
     
-    /*
     typedef PVOID (WINAPI *AddVectoredExceptionHandler_t)(
       ULONG                       First,
       PVECTORED_EXCEPTION_HANDLER Handler);
 
     typedef ULONG (WINAPI *RemoveVectoredExceptionHandler_t)(
       PVOID                       Handle);
-    */
+
+#include "bypass.h" //For the structs necessary for each bypass
 
  #endif
  

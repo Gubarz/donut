@@ -32,6 +32,7 @@
 #ifndef BYPASS_H
 #define BYPASS_H
 
+#include "donut.h"
 //#include <ntstatus.h>
 
 #include "winapi.h" // Needed for the *_t function prototypes used in donut.h `DONUT_INSTANCE`
